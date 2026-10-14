@@ -1,77 +1,185 @@
 package com.tiktokbox.hp;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.SharedPreferences;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
+import android.provider.Settings;
+import android.view.accessibility.AccessibilityManager;
+import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.tiktokbox.hp.chaos.CalibrationOverlay;
+import com.tiktokbox.hp.chaos.ChaosConfig;
+import com.tiktokbox.hp.chaos.ChaosService;
+import com.tiktokbox.hp.chaos.ConfigEditorActivity;
+import com.tiktokbox.hp.chaos.TapAccessibilityService;
 
 /**
- * TikTokBox HP - WebView wrapper.
- * Memuat overlay lokal (assets/overlay.html) yang bisa konek via WS ke
- * gift-listener di Termux (localhost:8090) atau PC di LAN.
- * Tanpa backend pun mini-game + tombol test gift tetap jalan lokal.
+ * Menu utama TikTokBox Chaos: status izin, service, kalibrasi macro,
+ * latihan gift/follow, PANIC, dan editor config universal.
  */
 public class MainActivity extends Activity {
-    private WebView web;
-    private static final String PREF = "tbhp";
-    private static final String KEY_SRV = "server"; // cth http://192.168.1.5:8090
+    private TextView statusView;
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        FrameLayout root = new FrameLayout(this);
-        web = new WebView(this);
-        root.addView(web, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
-        setContentView(root);
+        ScrollView sv = new ScrollView(this);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(28, 28, 28, 28);
+        sv.addView(root);
+        setContentView(sv);
 
-        WebSettings s = web.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setMediaPlaybackRequiresUserGesture(false);
-        web.setWebViewClient(new WebViewClient());
+        TextView title = new TextView(this);
+        title.setText("\uD83D\uDCE6 TikTokBox Chaos v0.2");
+        title.setTextSize(22);
+        root.addView(title);
 
-        // inject server pilihan ke localStorage overlay sebelum load
-        SharedPreferences sp = getSharedPreferences(PREF, MODE_PRIVATE);
-        String srv = sp.getString(KEY_SRV, "");
-        if (!srv.isEmpty()) {
-            web.evaluateJavascript(null, null); // no-op, localStorage diatur via JS di overlay
+        statusView = new TextView(this);
+        statusView.setPadding(0, 12, 0, 12);
+        root.addView(statusView);
+
+        addBtn(root, "▶ Jalankan Chaos Service", v -> {
+            startForegroundServiceCompat();
+            refreshStatus();
+        });
+        addBtn(root, "⏹ Stop Service", v -> {
+            stopService(new Intent(this, ChaosService.class));
+            refreshStatus();
+        });
+        addBtn(root, "♿ Aktifkan Aksesibilitas Tap", v -> {
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            toast("Aktifkan: TikTokBox Chaos");
+        });
+        addBtn(root, "🪟 Izin Overlay", v -> {
+            if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
+                startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName())));
+            } else toast("Overlay sudah aktif");
+            refreshStatus();
+        });
+        addBtn(root, "🎯 Rekam Macro (tap manual di layar)", v -> askMacroIdAndRecord());
+        addBtn(root, "▶ Coba Macro rose_emote", v -> {
+            if (!TapAccessibilityService.isEnabled()) { toast("Aksesibilitas belum aktif"); return; }
+            ChaosConfig cfg = new ChaosConfig(this);
+            TapAccessibilityService.runMacro(cfg.macros().optJSONObject("rose_emote"),
+                    () -> runOnUiThread(() -> toast("Macro selesai")));
+        });
+        addBtn(root, "🌹 Latihan: Gift Rose", v -> {
+            ChaosService.practiceGift(this, "rose", "Rose", 1);
+        });
+        addBtn(root, "🦁 Latihan: Gift Lion", v -> {
+            ChaosService.practiceGift(this, "lion", "Lion", 29999);
+        });
+        addBtn(root, "➕ Latihan: Follow", v -> {
+            ChaosService.practiceFollow(this, "penonton_baru");
+        });
+        addBtn(root, "🚨 PANIC 5 menit", v -> {
+            ChaosService.panic(this, 5);
+            refreshStatus();
+        });
+        addBtn(root, "✅ PANIC off", v -> {
+            ChaosService.unpanic(this);
+            refreshStatus();
+        });
+        addBtn(root, "⚙ Edit Config Universal", v -> {
+            startActivity(new Intent(this, ConfigEditorActivity.class));
+        });
+        addBtn(root, "🖥 Overlay Lama", v -> {
+            startActivity(new Intent(this, LegacyOverlayActivity.class));
+        });
+
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 7);
         }
-
-        web.loadUrl("file:///android_asset/overlay.html");
-
-        // long-press = ganti server backend
-        web.setOnLongClickListener(v -> { askServer(); return true; });
+        refreshStatus();
     }
 
-    private void askServer() {
-        SharedPreferences sp = getSharedPreferences(PREF, MODE_PRIVATE);
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshStatus();
+    }
+
+    private void startForegroundServiceCompat() {
+        Intent i = new Intent(this, ChaosService.class);
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(i);
+        else startService(i);
+    }
+
+    private void addBtn(LinearLayout root, String text, android.view.View.OnClickListener l) {
+        Button btn = new Button(this);
+        btn.setText(text);
+        btn.setOnClickListener(l);
+        root.addView(btn);
+    }
+
+    private void askMacroIdAndRecord() {
+        if (CalibrationOverlay.isActive()) {
+            CalibrationOverlay.stop(false);
+            toast("Rekaman dibatalkan");
+            return;
+        }
         EditText et = new EditText(this);
-        et.setText(sp.getString(KEY_SRV, "http://192.168.1.5:8090"));
-        et.setHint("http://IP-PC:8090 (kosongkan = mode lokal)");
+        et.setText("rose_emote");
         new AlertDialog.Builder(this)
-                .setTitle("Server gift-listener")
-                .setMessage("Long-press menu. Isi IP backend Node (Termux/PC), atau kosongkan untuk mode lokal.")
+                .setTitle("ID Macro")
+                .setMessage("Buka FF dulu, lalu tap tombol sesuai urutan (mis. buka emote, pilih emote).")
                 .setView(et)
-                .setPositiveButton("Simpan & Muat", (d, w) -> {
-                    String v = et.getText().toString().trim();
-                    sp.edit().putString(KEY_SRV, v).apply();
-                    if (!v.isEmpty()) web.loadUrl(v + "/overlay.html");
-                    else web.loadUrl("file:///android_asset/overlay.html");
+                .setPositiveButton("Mulai Rekam", (d, w) -> {
+                    String id = et.getText().toString().trim();
+                    if (id.isEmpty()) id = "rose_emote";
+                    CalibrationOverlay.start(this, id);
                 })
                 .setNegativeButton("Batal", null)
                 .show();
     }
 
-    @Override
-    public void onBackPressed() {
-        if (web.canGoBack()) web.goBack();
-        else super.onBackPressed();
+    private void refreshStatus() {
+        ChaosConfig cfg = new ChaosConfig(this);
+        boolean acc = isAccessibilityOn();
+        boolean ov = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this);
+        String s = "Service: " + (ChaosService.isRunning() ? "JALAN" : "mati")
+                + "\nAksesibilitas tap: " + (acc ? "AKTIF" : "MATI")
+                + "\nOverlay: " + (ov ? "AKTIF" : "MATI")
+                + "\nMode: " + (cfg.practiceMode() ? "latihan" : "live (" + cfg.serverUrl() + ")")
+                + "\nPANIC: " + (cfg.panicking() ? "AKTIF" : "off");
+        statusView.setText(s);
+    }
+
+    private boolean isAccessibilityOn() {
+        try {
+            AccessibilityManager am = (AccessibilityManager) getSystemService(Context.ACCESSIBILITY_SERVICE);
+            if (am == null) return false;
+            String target = getPackageName() + "/" + TapAccessibilityService.class.getName();
+            for (android.accessibilityservice.AccessibilityServiceInfo info :
+                    am.getEnabledAccessibilityServiceList(
+                            android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
+                if (target.equals(info.getResolveInfo().serviceInfo.name)
+                        || (getPackageName().equals(info.getResolveInfo().serviceInfo.packageName)
+                        && TapAccessibilityService.class.getSimpleName().equals(
+                                info.getResolveInfo().serviceInfo.name.substring(
+                                        info.getResolveInfo().serviceInfo.name.lastIndexOf('.') + 1)))) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {}
+        return TapAccessibilityService.isEnabled();
+    }
+
+    private void toast(String s) {
+        Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
     }
 }
