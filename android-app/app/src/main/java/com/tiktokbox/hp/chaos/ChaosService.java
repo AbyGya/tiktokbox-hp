@@ -38,8 +38,16 @@ public class ChaosService extends Service {
     private TextToSpeech tts;
     private long lastAction = 0;
     private int reconnectDelay = 3000;
+    private int totalDiamonds = 0;
+    private int totalGiftCount = 0;
 
     public static boolean isRunning() { return instance != null; }
+
+    /** {diamonds, giftCount} sejak service jalan (untuk bubble mini). */
+    public static int[] stats() {
+        if (instance == null) return new int[]{0, 0};
+        return new int[]{instance.totalDiamonds, instance.totalGiftCount};
+    }
 
     @Override
     public void onCreate() {
@@ -146,6 +154,9 @@ public class ChaosService extends Service {
     }
 
     public void onGift(String user, String giftId, String giftName, long diamonds, int count) {
+        totalGiftCount += Math.max(1, count);
+        totalDiamonds += (int) Math.min(Integer.MAX_VALUE - totalDiamonds, diamonds * Math.max(1, count));
+        MiniOverlay.update();
         if (!gate()) return;
         if (follow.shieldActive()) { toast("Tameng menahan gift " + giftName); return; }
         ChaosConfig cfg = new ChaosConfig(this);
@@ -232,11 +243,13 @@ public class ChaosService extends Service {
             instance.jumpscare.dismiss();
             instance.toast("PANIC: efek mati " + minutes + " menit");
         }
+        MiniOverlay.update();
     }
 
     public static void unpanic(Context c) {
         new ChaosConfig(c).clearPanic();
         if (instance != null) instance.toast("PANIC off");
+        MiniOverlay.update();
     }
 
     @Override

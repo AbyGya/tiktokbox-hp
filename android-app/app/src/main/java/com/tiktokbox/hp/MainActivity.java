@@ -21,15 +21,18 @@ import android.widget.Toast;
 import com.tiktokbox.hp.chaos.CalibrationOverlay;
 import com.tiktokbox.hp.chaos.ChaosConfig;
 import com.tiktokbox.hp.chaos.ChaosService;
+import com.tiktokbox.hp.chaos.ChaosUI;
 import com.tiktokbox.hp.chaos.ConfigEditorActivity;
+import com.tiktokbox.hp.chaos.MiniOverlay;
 import com.tiktokbox.hp.chaos.TapAccessibilityService;
 
 /**
- * Menu utama TikTokBox Chaos: status izin, service, kalibrasi macro,
- * latihan gift/follow, PANIC, dan editor config universal.
+ * Dashboard utama: setup 3 langkah + kendali + latihan + macro,
+ * semua berbahasa Indonesia dan tombol besar. Bisa minimize ke bubble.
  */
 public class MainActivity extends Activity {
     private TextView statusView;
+    private TextView stepView;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -37,68 +40,120 @@ public class MainActivity extends Activity {
         ScrollView sv = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(28, 28, 28, 28);
+        int pad = ChaosUI.dp(this, 14);
+        root.setPadding(pad, pad, pad, pad);
+        root.setBackgroundColor(ChaosUI.BG);
         sv.addView(root);
+        sv.setBackgroundColor(ChaosUI.BG);
         setContentView(sv);
 
+        // header
+        LinearLayout head = ChaosUI.card(this);
         TextView title = new TextView(this);
-        title.setText("\uD83D\uDCE6 TikTokBox Chaos v0.2");
-        title.setTextSize(22);
-        root.addView(title);
+        title.setText("\uD83D\uDCE6 TikTokBox Chaos");
+        title.setTextSize(24);
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        title.setTextColor(ChaosUI.NEON);
+        head.addView(title);
+        TextView sub = new TextView(this);
+        sub.setText("Pengacau host FF via gift TikTok • v0.3");
+        sub.setTextColor(ChaosUI.DIM);
+        sub.setTextSize(13);
+        head.addView(sub);
+        statusView = ChaosUI.body(this, "");
+        head.addView(statusView);
+        root.addView(head);
 
-        statusView = new TextView(this);
-        statusView.setPadding(0, 12, 0, 12);
-        root.addView(statusView);
-
-        addBtn(root, "▶ Jalankan Chaos Service", v -> {
-            startForegroundServiceCompat();
+        // setup 3 langkah
+        LinearLayout setup = ChaosUI.card(this);
+        setup.addView(ChaosUI.title(this, "🚀 Setup (3 langkah, sekali saja)"));
+        stepView = ChaosUI.body(this, "");
+        setup.addView(stepView);
+        setup.addView(ChaosUI.row2(this,
+                ChaosUI.button(this, "1️⃣ Jalankan Service", ChaosUI.GREEN),
+                ChaosUI.button(this, "2️⃣ Aksesibilitas", ChaosUI.BLUE)));
+        ((Button) ((LinearLayout) setup.getChildAt(2)).getChildAt(0)).setOnClickListener(v -> {
+            startChaosService();
             refreshStatus();
         });
-        addBtn(root, "⏹ Stop Service", v -> {
-            stopService(new Intent(this, ChaosService.class));
-            refreshStatus();
-        });
-        addBtn(root, "♿ Aktifkan Aksesibilitas Tap", v -> {
+        ((Button) ((LinearLayout) setup.getChildAt(2)).getChildAt(1)).setOnClickListener(v -> {
             startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
             toast("Aktifkan: TikTokBox Chaos");
         });
-        addBtn(root, "🪟 Izin Overlay", v -> {
+        Button b3 = ChaosUI.button(this, "3️⃣ Izin Overlay (tampil di atas game)", ChaosUI.BLUE);
+        b3.setOnClickListener(v -> {
             if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
                 startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         Uri.parse("package:" + getPackageName())));
-            } else toast("Overlay sudah aktif");
+            } else toast("Overlay sudah aktif ✔");
             refreshStatus();
         });
-        addBtn(root, "🎯 Rekam Macro (tap manual di layar)", v -> askMacroIdAndRecord());
-        addBtn(root, "▶ Coba Macro rose_emote", v -> {
-            if (!TapAccessibilityService.isEnabled()) { toast("Aksesibilitas belum aktif"); return; }
+        setup.addView(b3);
+        setup.addView(ChaosUI.hint(this, "Urutan gampang: tekan 1️⃣, lalu 2️⃣, lalu 3️⃣ sampai semua ✔"));
+        root.addView(setup);
+
+        // kendali
+        LinearLayout ctl = ChaosUI.card(this);
+        ctl.addView(ChaosUI.title(this, "🎮 Kendali Live"));
+        Button bMin = ChaosUI.button(this, "🔽 Minimize (bubble melayang)", ChaosUI.BLUE);
+        bMin.setOnClickListener(v -> {
+            MiniOverlay.start(this);
+            moveTaskToBack(true);
+            toast("Bubble aktif — geser ke pinggir layar");
+        });
+        ctl.addView(bMin);
+        ctl.addView(ChaosUI.row2(this,
+                panicBtn("🚨 PANIC 5 mnt", true),
+                panicBtn("✅ PANIC off", false)));
+        ctl.addView(ChaosUI.hint(this, "PANIC = semua efek mati total. Bubble juga punya tombol 🚨."));
+        root.addView(ctl);
+
+        // latihan
+        LinearLayout lat = ChaosUI.card(this);
+        lat.addView(ChaosUI.title(this, "🎁 Coba-coba (mode latihan)"));
+        Button g1 = ChaosUI.button(this, "🌹 Simulasi Gift Mawar", ChaosUI.GREEN);
+        g1.setOnClickListener(v -> ChaosService.practiceGift(this, "rose", "Rose", 1));
+        lat.addView(g1);
+        lat.addView(ChaosUI.row2(this,
+                giftBtn("🦁 Gift Singa", "lion", "Lion", 29999),
+                followBtn("➕ Simulasi Follow")));
+        lat.addView(ChaosUI.hint(this, "Tanpa live pun bisa dicoba. Nanti gift asli otomatis jalan sendiri."));
+        root.addView(lat);
+
+        // macro FF
+        LinearLayout mac = ChaosUI.card(this);
+        mac.addView(ChaosUI.title(this, "🎯 Macro Emote FF"));
+        Button bRec = ChaosUI.button(this, "⏺ Rekam Tap Manual", ChaosUI.AMBER);
+        bRec.setOnClickListener(v -> askMacroIdAndRecord());
+        mac.addView(bRec);
+        Button bTry = ChaosUI.button(this, "▶ Coba Macro rose_emote", ChaosUI.GREEN);
+        bTry.setOnClickListener(v -> {
+            if (!TapAccessibilityService.isEnabled()) { toast("Aksesibilitas belum aktif (langkah 2️⃣)"); return; }
             ChaosConfig cfg = new ChaosConfig(this);
             TapAccessibilityService.runMacro(cfg.macros().optJSONObject("rose_emote"),
-                    () -> runOnUiThread(() -> toast("Macro selesai")));
+                    () -> runOnUiThread(() -> toast("Macro selesai ✔")));
         });
-        addBtn(root, "🌹 Latihan: Gift Rose", v -> {
-            ChaosService.practiceGift(this, "rose", "Rose", 1);
-        });
-        addBtn(root, "🦁 Latihan: Gift Lion", v -> {
-            ChaosService.practiceGift(this, "lion", "Lion", 29999);
-        });
-        addBtn(root, "➕ Latihan: Follow", v -> {
-            ChaosService.practiceFollow(this, "penonton_baru");
-        });
-        addBtn(root, "🚨 PANIC 5 menit", v -> {
-            ChaosService.panic(this, 5);
+        mac.addView(bTry);
+        mac.addView(ChaosUI.hint(this, "Rekam = buka FF, tap tombol emote 2x (buka menu, pilih emote), lalu Simpan."));
+        root.addView(mac);
+
+        // pengaturan
+        LinearLayout cfg = ChaosUI.card(this);
+        cfg.addView(ChaosUI.title(this, "⚙️ Pengaturan"));
+        Button bCfg = ChaosUI.button(this, "✏️ Edit Semua (universal)", ChaosUI.BLUE);
+        bCfg.setOnClickListener(v -> startActivity(new Intent(this, ConfigEditorActivity.class)));
+        cfg.addView(bCfg);
+        Button bOld = ChaosUI.button(this, "🖥 Overlay Lama (ranking)", ChaosUI.BLUE);
+        bOld.setOnClickListener(v -> startActivity(new Intent(this, LegacyOverlayActivity.class)));
+        cfg.addView(bOld);
+        Button bStop = ChaosUI.button(this, "⏹ Matikan Service", ChaosUI.RED);
+        bStop.setOnClickListener(v -> {
+            MiniOverlay.stop();
+            stopService(new Intent(this, ChaosService.class));
             refreshStatus();
         });
-        addBtn(root, "✅ PANIC off", v -> {
-            ChaosService.unpanic(this);
-            refreshStatus();
-        });
-        addBtn(root, "⚙ Edit Config Universal", v -> {
-            startActivity(new Intent(this, ConfigEditorActivity.class));
-        });
-        addBtn(root, "🖥 Overlay Lama", v -> {
-            startActivity(new Intent(this, LegacyOverlayActivity.class));
-        });
+        cfg.addView(bStop);
+        root.addView(cfg);
 
         if (Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -107,23 +162,38 @@ public class MainActivity extends Activity {
         refreshStatus();
     }
 
+    private Button panicBtn(String t, boolean on) {
+        Button x = ChaosUI.button(this, t, on ? ChaosUI.RED : ChaosUI.GREEN);
+        x.setOnClickListener(v -> {
+            if (on) ChaosService.panic(this, 5);
+            else ChaosService.unpanic(this);
+            refreshStatus();
+        });
+        return x;
+    }
+
+    private Button giftBtn(String t, String id, String name, long d) {
+        Button x = ChaosUI.button(this, t, ChaosUI.GREEN);
+        x.setOnClickListener(v -> ChaosService.practiceGift(this, id, name, d));
+        return x;
+    }
+
+    private Button followBtn(String t) {
+        Button x = ChaosUI.button(this, t, ChaosUI.GREEN);
+        x.setOnClickListener(v -> ChaosService.practiceFollow(this, "penonton_baru"));
+        return x;
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         refreshStatus();
     }
 
-    private void startForegroundServiceCompat() {
+    private void startChaosService() {
         Intent i = new Intent(this, ChaosService.class);
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(i);
         else startService(i);
-    }
-
-    private void addBtn(LinearLayout root, String text, android.view.View.OnClickListener l) {
-        Button btn = new Button(this);
-        btn.setText(text);
-        btn.setOnClickListener(l);
-        root.addView(btn);
     }
 
     private void askMacroIdAndRecord() {
@@ -135,13 +205,14 @@ public class MainActivity extends Activity {
         EditText et = new EditText(this);
         et.setText("rose_emote");
         new AlertDialog.Builder(this)
-                .setTitle("ID Macro")
-                .setMessage("Buka FF dulu, lalu tap tombol sesuai urutan (mis. buka emote, pilih emote).")
+                .setTitle("Mau rekam macro apa?")
+                .setMessage("Buka game FF dulu, tekan Mulai, lalu TAP tombol di layar sesuai urutan. Terakhir tekan Simpan di panel merah.")
                 .setView(et)
-                .setPositiveButton("Mulai Rekam", (d, w) -> {
+                .setPositiveButton("⏺ Mulai Rekam", (d, w) -> {
                     String id = et.getText().toString().trim();
                     if (id.isEmpty()) id = "rose_emote";
                     CalibrationOverlay.start(this, id);
+                    moveTaskToBack(true);
                 })
                 .setNegativeButton("Batal", null)
                 .show();
@@ -149,29 +220,27 @@ public class MainActivity extends Activity {
 
     private void refreshStatus() {
         ChaosConfig cfg = new ChaosConfig(this);
+        boolean svc = ChaosService.isRunning();
         boolean acc = isAccessibilityOn();
         boolean ov = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this);
-        String s = "Service: " + (ChaosService.isRunning() ? "JALAN" : "mati")
-                + "\nAksesibilitas tap: " + (acc ? "AKTIF" : "MATI")
-                + "\nOverlay: " + (ov ? "AKTIF" : "MATI")
-                + "\nMode: " + (cfg.practiceMode() ? "latihan" : "live (" + cfg.serverUrl() + ")")
-                + "\nPANIC: " + (cfg.panicking() ? "AKTIF" : "off");
-        statusView.setText(s);
+        int[] st = ChaosService.stats();
+        statusView.setText((svc ? "🟢" : "⚪") + " Service " + (svc ? "JALAN" : "mati")
+                + "   •   🎁 " + st[1] + "   •   💎 " + st[0]
+                + (cfg.panicking() ? "\n🔴 PANIC AKTIF" : ""));
+        stepView.setText((svc ? "✔" : "⬜") + " 1. Service jalan\n"
+                + (acc ? "✔" : "⬜") + " 2. Aksesibilitas tap\n"
+                + (ov ? "✔" : "⬜") + " 3. Overlay di atas game");
     }
 
     private boolean isAccessibilityOn() {
         try {
             AccessibilityManager am = (AccessibilityManager) getSystemService(Context.ACCESSIBILITY_SERVICE);
             if (am == null) return false;
-            String target = getPackageName() + "/" + TapAccessibilityService.class.getName();
             for (android.accessibilityservice.AccessibilityServiceInfo info :
                     am.getEnabledAccessibilityServiceList(
                             android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
-                if (target.equals(info.getResolveInfo().serviceInfo.name)
-                        || (getPackageName().equals(info.getResolveInfo().serviceInfo.packageName)
-                        && TapAccessibilityService.class.getSimpleName().equals(
-                                info.getResolveInfo().serviceInfo.name.substring(
-                                        info.getResolveInfo().serviceInfo.name.lastIndexOf('.') + 1)))) {
+                if (getPackageName().equals(info.getResolveInfo().serviceInfo.packageName)
+                        && info.getResolveInfo().serviceInfo.name.endsWith("TapAccessibilityService")) {
                     return true;
                 }
             }
