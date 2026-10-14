@@ -1,0 +1,18 @@
+{
+  "name": "tiktokbox-hp-gift-listener",
+  "version": "0.1.0",
+  "description": "Clean-room TikTok LIVE gift reader for Android HP (Infinix Hot 60 Pro). Pengganti TikTokBox.exe Windows.",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "mock": "MOCK_MODE=true node server.js",
+    "test": "node test-mock.js"
+  },
+  "dependencies": {
+    "tiktok-live-connector": "^2.4.0",
+    "ws": "^8.18.0",
+    "express": "^4.21.0",
+    "cors": "^2.8.5"
+  }
+}

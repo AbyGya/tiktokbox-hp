@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>TikTokBox HP — Live Gift Overlay</title>
+<style>
+  *{box-sizing:border-box} body{margin:0;background:#0b0e17;color:#eef;font-family:system-ui,Roboto,Arial,sans-serif}
+  header{padding:10px 14px;background:#11162a;position:sticky;top:0;z-index:5;border-bottom:1px solid #263}
+  header h1{font-size:16px;margin:0}.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;margin:2px 4px 0 0}
+  .on{background:#0a4d2e}.off{background:#5a1a1a}.stat{background:#1c2340}
+  main{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;max-width:900px;margin:auto}
+  @media(min-width:760px){main{grid-template-columns:1fr 1fr}}
+  .card{background:#141a33;border:1px solid #2a3563;border-radius:12px;padding:10px}
+  .card h2{font-size:14px;margin:0 0 8px;color:#9fd}
+  #rank div{display:flex;justify-content:space-between;padding:4px 6px;border-radius:8px;font-size:14px}
+  #rank div:nth-child(1){background:#3a2f05}#rank div:nth-child(2){background:#2a2f3a}#rank div:nth-child(3){background:#3a2410}
+  #feed{max-height:260px;overflow:auto;font-size:13px}#feed div{padding:3px 0;border-bottom:1px dashed #2a3563}
+  canvas{width:100%;height:220px;background:#070b18;border-radius:10px;border:1px solid #2a3563}
+  .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  button,input,select{background:#223;border:1px solid #456;color:#fff;border-radius:8px;padding:8px;font-size:14px}
+  button:active{transform:scale(.97)} small{color:#8a93b8}
+</style>
+</head>
+<body>
+<header>
+  <h1>📦 TikTokBox HP <small id="mode">…</small></h1>
+  <div>
+    <span class="pill off" id="conn">putus</span>
+    <span class="pill stat">💎 <b id="dmd">0</b></span>
+    <span class="pill stat">🎁 <b id="gft">0</b></span>
+    <span class="pill stat">❤️ <b id="lik">0</b></span>
+    <span class="pill stat">⭐ poin <b id="pts">0</b></span>
+  </div>
+</header>
+<main>
+  <div class="card"><h2>🗼 Tower Gift (mini-game pengganti OnlyClimb/KarinTower)</h2>
+    <canvas id="game" width="600" height="220"></canvas>
+    <small>Gift = naik. Makin besar 💎 makin tinggi lompat. Lion 🦁 = terbang.</small>
+    <div class="row">
+      <button onclick="testGift('Rose',1)">🌹 Rose</button>
+      <button onclick="testGift('GG',10)">🎮 GG x1</button>
+      <button onclick="testGift('Rocket',50)">🚀 Rocket</button>
+      <button onclick="reset()">Reset</button>
+    </div>
+  </div>
+  <div class="card"><h2>🏆 Ranking Gifters</h2><div id="rank"><small>belum ada gift</small></div></div>
+  <div class="card"><h2>📡 Live Feed</h2><div id="feed"></div></div>
+  <div class="card"><h2>⚙️ Koneksi</h2>
+    <small>Server default: host yang sama (<span id="host"></span>). Kalau backend di PC lain, isi IP PC lalu Reload.</small>
+    <div class="row"><input id="srv" placeholder="http://192.168.1.5:8090" style="flex:1"><button onclick="gantiServer()">Pakai</button></div>
+    <small>OBS: tambah Browser Source → URL overlay ini. HP: buka di Chrome.</small>
+  </div>
+</main>
+<script>
+let BASE = localStorage.getItem('tbhp') || location.origin;
+document.getElementById('host').textContent = BASE;
+document.getElementById('srv').value = BASE === location.origin ? '' : BASE;
+if (BASE !== location.origin) document.getElementById('mode').textContent = '(server: '+BASE+')';
+function gantiServer(){ const v=document.getElementById('srv').value.trim(); if(v){localStorage.setItem('tbhp',v.replace(/\/$/,'')); location.reload();} }
+let towerY = 180, towerX = 80, vy = 0, targetBoost = 0, lastGift = '';
+function gameLoop(){
+  const c = document.getElementById('game'), x = c.getContext('2d');
+  x.clearRect(0,0,c.width,c.height);
+  // menara
+  x.fillStyle='#1c2340'; for(let i=0;i<8;i++){ x.fillRect(60, 200-i*22, 120, 8); }
+  // pemain
+  vy += 0.6; towerY += vy;
+  if (towerY > 180){ towerY = 180; vy = 0; if(targetBoost>0){ vy = -targetBoost; targetBoost=0; } }
+  x.font='28px serif'; x.fillText('🧍', towerX, towerY);
+  if(lastGift){ x.font='14px sans-serif'; x.fillStyle='#9fd'; x.fillText(lastGift, towerX+34, towerY-6); }
+  requestAnimationFrame(gameLoop);
+}
+gameLoop();
+function lompat(diamonds, label){
+  const h = Math.min(6 + Math.sqrt(diamonds)*1.6, 26);
+  if (towerY >= 179) vy = -h; else targetBoost = h;
+  lastGift = label; setTimeout(()=>lastGift='', 2500);
+}
+async function testGift(nama, diamonds){
+  await fetch(BASE+'/api/test-gift',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:'kamu_hp',giftName:nama,diamonds,count:1})});
+}
+async function reset(){ await fetch(BASE+'/api/reset',{method:'POST'}); document.getElementById('feed').innerHTML=''; }
+function renderState(s){
+  document.getElementById('dmd').textContent = s.totalDiamonds;
+  document.getElementById('gft').textContent = s.totalGifts;
+  document.getElementById('lik').textContent = s.totalLikes;
+  document.getElementById('pts').textContent = s.points;
+  const c = document.getElementById('conn');
+  c.textContent = s.connected ? ('live'+(s.roomId?' • '+s.roomId:'')) : 'putus';
+  c.className = 'pill ' + (s.connected?'on':'off');
+  const r = document.getElementById('rank');
+  r.innerHTML = s.ranking.length ? s.ranking.map((g,i)=>`<div><span>#${i+1} ${g.name}</span><b>${g.diamonds}💎 (${g.count}x)</b></div>`).join('') : '<small>belum ada gift</small>';
+}
+function renderEvent(e){
+  const f = document.getElementById('feed');
+  const d = document.createElement('div');
+  if(e.kind==='gift'){ d.textContent = `🎁 ${e.user}: ${e.giftName} x${e.count} (+${e.diamonds}💎)`; lompat(e.diamonds, `+${e.diamonds}💎 ${e.giftName}`); }
+  else if(e.kind==='chat') d.textContent = `💬 ${e.user}: ${e.comment}`;
+  else if(e.kind==='like') d.textContent = `❤️ ${e.user} +${e.count}`;
+  else if(e.kind==='follow') d.textContent = `➕ ${e.user} follow`;
+  else if(e.kind==='share') d.textContent = `🔁 ${e.user} share`;
+  else if(e.kind==='join') d.textContent = `👋 ${e.user} masuk`;
+  else return;
+  f.prepend(d); while(f.children.length>40) f.lastChild.remove();
+}
+function connectWS(){
+  const wsUrl = BASE.replace('http','ws')+'/ws';
+  const ws = new WebSocket(wsUrl);
+  ws.onmessage = m => { const p = JSON.parse(m.data); if(p.state) renderState(p.state); if(p.event) renderEvent(p.event); };
+  ws.onclose = ()=> setTimeout(connectWS, 3000);
+  ws.onerror = ()=> ws.close();
+}
+connectWS();
+setInterval(async ()=>{ try{ const r=await fetch(BASE+'/api/state'); renderState(await r.json()); }catch(e){} }, 5000);
+</script>
+</body>
+</html>
